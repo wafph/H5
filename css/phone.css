@@ -1,0 +1,46 @@
+/*iphone5/5s*/
+@media  (min-device-width: 320px ) {
+	html{
+		font-size: 32px;	
+		
+	} 
+}
+/*Galaxy 5s*/
+@media  (min-device-width: 360px ) {
+	html{
+		font-size: 36px;
+		
+		
+	}
+}
+/*Nexus 5X、Nexus 6P*/
+@media (min-device-width: 412px ) {
+	html{
+		font-size: 41.2px;
+		background:green;
+	}
+}
+/*iphone*/
+@media (min-device-width: 375px ) {
+	html{
+		font-size: 37.5px;
+		
+	}
+}
+/*iphone 6plus */
+@media (min-device-width: 414px ) {
+	html{
+		font-size: 41.4px;
+		background:pink;
+	}
+}
+/*ipad */
+@media (min-device-width: 768px ) {
+	html{
+		font-size: 76.8px;
+		
+	}
+}
+
+
+

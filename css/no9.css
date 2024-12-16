@@ -1,0 +1,71 @@
+*{
+	padding:0px;
+	margin:0px;
+	
+}
+/*header开始*/
+.header{
+	width:100%;
+	height: 1.40625rem ;
+	background:pink;
+	display: flex;
+}
+.header .flex-item{
+	height:100%;
+}
+.header .flex-item:nth-child(1)
+{
+	flex:1;
+	background:yellow;
+}
+
+.header .flex-item:nth-child(2)
+{
+	flex:2;
+	background:red;
+	display: flex;
+}
+.header .flex-item:nth-child(2) img
+{
+	height: 0.9375rem;
+	margin:auto;
+}
+.header .flex-item:nth-child(3)
+{
+	flex:1;
+	background:yellow;
+}
+/*header结束*/
+/*icon部分开始*/
+.content{
+	width:100%;
+	height:2.5rem;
+	background:blue;
+	display:flex;
+	justify-content: space-around;
+}
+.content .flex-item{
+	/*margin-left:0.3rem;*/
+	/*background:pink;*/
+	height:100%;
+	flex:1;
+	display: flex;
+	flex-direction: column;
+	/*justify-content: center;*/
+	
+}
+.content .flex-item img{
+	width:1.1875rem ;
+	height:1.1875rem  ;
+	margin:auto;
+	
+	/*border:1px solid red;*/
+}
+.content .flex-item div{
+	font-size:0.4375rem;
+	text-align: center;
+	/*border:1px solid red;*/
+	margin-bottom:0.28125rem ;
+	
+}
+/*icon部分结束*/
