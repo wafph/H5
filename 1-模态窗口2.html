@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title></title>
+		<style>
+		*{
+			margin:0px;
+			padding:0px;
+		}
+			#open1{
+				position: absolute;
+				width:80px;
+				height:80px;
+				background:green;
+				left:500px;
+				top:200px;
+				z-index: -2;;
+
+			}
+			#open2{
+				position: absolute;
+				width:80px;
+				height:80px;
+				background:green;
+				left:580px;
+				top:200px;
+				z-index: -2;;
+
+			}
+			#open3{
+				position: absolute;
+				width:80px;
+				height:80px;
+				background:green;
+				left:660px;
+				top:200px;
+				z-index: -2;;
+
+			}
+			#open4{
+				position: absolute;
+				width:80px;
+				height:80px;
+				background:green;
+				left:740px;
+				top:200px;
+				z-index: -2;;
+
+			}
+			#cover{
+				/* width:100%;
+				height:100%;
+				background:rgba(0,0,0,0.5);
+				position: absolute;
+				display:none;
+				z-index: -1; */
+			}
+			#leftDiv{
+				width:300px;
+				height:100%;
+				background:blue;
+				position: absolute;
+				left:-300px;
+				
+			}
+			#close1{
+				position: absolute;
+				right:0px;
+				top:0px;
+			}
+			#rightDiv{
+				width:0px;
+				height:100%;
+				background:red;
+				right:0px;
+				top:0px;
+				position: absolute;
+			}
+			#close2{
+                display: none;
+				position: absolute;
+                left: 0;
+                top: 0;
+			}
+            #close3{
+				position: absolute;
+                right: 0;
+                bottom: 0;
+			}
+
+            #close4{
+                display: none;
+				position: absolute;
+                right: 10px;
+                top: 10px;
+			}
+			#topDiv{
+				width:100%;
+				height:200px;
+				background:blue;
+				position: absolute;
+                top: -200px;
+			}
+
+            #bottomDiv{
+				width:100%;
+                border-radius: 20px ;
+				height:0;
+				background:yellow;
+				position: absolute;
+                bottom: 20px;
+			}
+			
+		</style>
+	</head>
+	<body>
+			<input type="button" id="open1" value="打开抽屉1" />
+			<input type="button" id="open2" value="打开抽屉2" />
+			<input type="button" id="open3" value="打开抽屉3" />
+			<input type="button" id="open4" value="打开抽屉4" />
+			<div id="cover"></div>
+			<div id="leftDiv">
+				<input type="button" id="close1" value ="X" />
+			</div>
+			<div id="rightDiv">
+				<input type="button" id="close2" value ="X" />
+			</div>
+			<div id="topDiv"><input type="button" id="close3" value ="X" /></div>
+			<div id="bottomDiv"><input type="button" id="close4" value ="X1" /></div>
+	</body>
+	<script src ="js/tween.js"></script>
+	<script>
+		var cover = document.getElementById("cover");
+		var open1 = document.getElementById("open1");
+		var open2 = document.getElementById("open2");
+        var open3 = document.getElementById("open3");
+		var open4 = document.getElementById("open4");
+		var leftDiv = document.getElementById("leftDiv");
+		var rightDiv = document.getElementById("rightDiv");
+		var topDiv = document.getElementById("topDiv");
+		var bottomDiv = document.getElementById("bottomDiv");
+		
+		var close1 = document.getElementById("close1");
+		var close2 = document.getElementById("close2");
+        var close3 = document.getElementById("close3");
+		var close4 = document.getElementById("close4");
+		
+		var h = document.documentElement.clientHeight;
+        var w = document.documentElement.clientWidth;
+		leftDiv.style.height = h +"px";//设置左边的div的高度
+		rightDiv.style.height = h +"px";//设置左边的div的高度
+        topDiv.style.width = w +"px";//设置上边的div的宽度
+        bottomDiv.style.width = w +"px";//设置上边的div的宽度
+		
+		
+		open2.onclick = function()
+		{
+			close2.style.display ="block";
+			
+			var t =0;
+			var b = 0;
+			var c = 300;
+			var d = 50;
+			var timer = setInterval(function(){
+				t ++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+				}
+				rightDiv.style.width = Tween.Linear(t,b,c,d)+"px";
+			},50);
+		}
+		close2.onclick = function()
+		{
+			var t =0;
+			var b =300;
+			var c =-300 ;  // 0- 200
+			var d = 50;
+			
+			var timer =setInterval(function(){
+				t ++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+					close2.style.display="none";
+				}
+				rightDiv.style.width = Tween.Linear(t,b,c,d)+"px";
+			},50);
+		}
+
+        open2.onclick = function()
+		{
+            close2.style.display ="block";
+			
+			var t =0;
+			var b = 0;
+			var c = 300;
+			var d = 50;
+			var timer = setInterval(function(){
+				t ++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+				}
+				rightDiv.style.width = Tween.Linear(t,b,c,d)+"px";
+			},50);
+		}
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		open1.onclick = function()
+		{
+			//cover.style.display ="block";
+			
+			var t = 0;
+			var b = -300;
+			var c = 300;
+			var d = 50;
+			var timer = setInterval(function(){
+				t++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+					
+				}
+				leftDiv.style.left = Tween.Linear(t,b,c,d)+"px";
+			},50)
+		}
+		
+		close1.onclick = function()
+		{
+			var t = 0;
+			var b = 0;
+			var c = -300;
+			var d = 50;
+			var timer= setInterval(function(){
+				t++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+					cover.style.display ="none";
+				}
+				leftDiv.style.left = Tween.Linear(t,b,c,d)+"px";
+			},50);
+		}
+
+        open3.onclick = function()
+		{
+			//cover.style.display ="block";
+			
+			var t = 0;
+			var b = -300;
+			var c = 300;
+			var d = 50;
+			var timer = setInterval(function(){
+				t++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+					
+				}
+				topDiv.style.top = Tween.Linear(t,b,c,d)+"px";
+			},60)
+		}
+
+        close3.onclick = function()
+		{
+			var t = 0;
+			var b = 0;
+			var c = -300;
+			var d = 50;
+			var timer= setInterval(function(){
+				t++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+					cover.style.display ="none";
+				}
+                topDiv.style.top = Tween.Linear(t,b,c,d)+"px";			
+			},50);
+		}
+
+        open4.onclick = function()
+		{
+            close4.style.display ="block";
+			
+			var t = 0;
+			var b = 0;
+			var c = 300;
+			var d = 1;
+			var timer = setInterval(function(){
+				t++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+					
+				}
+				bottomDiv.style.height = Tween.Linear(t,b,c,d)+"px";
+			},60)
+		}
+
+        close4.onclick = function()
+		{
+			var t = 0;
+			var b = 300;
+			var c = -300;
+			var d = 1;
+			var timer= setInterval(function(){
+				t++;
+				if(t >=d)
+				{
+					clearInterval(timer);
+                    close4.style.display ="none";
+				}
+                bottomDiv.style.height = Tween.Linear(t,b,c,d)+"px";			
+			},50);
+		}
+
+		
+		
+		
+	</script>
+</html>
