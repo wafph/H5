@@ -1,0 +1,852 @@
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue';
+import {
+  E_ACTION,
+  M_ERROR_CODE,
+  M_ACTION_DETECT_ERROR,
+  M_VERIFY_STATUS_ERROR,
+  VIDEO_HEIGHT,
+  VIDEO_WIDTH,
+  TWO_STAGE_TYPES,
+} from '../utils/consts';
+import { faceVerify, checkToken } from '../utils/api';
+import isBrowserSimulation from '../utils/detectDeviceType';
+import Header from '../components/Header.vue';
+import Progress from '../components/Progress.vue';
+import { useState } from '../utils/state';
+import { useLogger } from '../utils/logger';
+import { useWasmLoader } from '../utils/wasm-loader';
+import { useI18n } from 'vue-i18n';
+
+const logger = useLogger();
+const { wasm } = useWasmLoader();
+const { states, getStyle, setLoading, getConfig } = useState();
+const { t } = useI18n();
+
+const successOutCircle = getConfig('auth_out_circle_color_success', '#0a59f7');
+const failOutCircle = getConfig('auth_out_circle_color_fail', '#f76360');
+const showRetry = ref(false);
+const isShowVideo = ref(false);
+const showBackIcon = ref(true);
+const state = ref<'verify' | 'failed' | 'success'>('verify');
+const hint = ref('');
+const stream = ref<any>(null);
+const videoRef = ref<HTMLVideoElement>();
+const isRunning = ref(false);
+const isLoading = ref(false);
+const currentStep = ref(0);
+const frameRate = 2;
+const actions = ref<Array<number>>([]);
+const tip = ref('');
+const failedTitle = ref('');
+const dst = ref<any>();
+const isWarn = ref(false);
+const opacity = ref(false);
+const percent = ref(0);
+const lastActionLog = ref('');
+const base64Image = ref('');
+const aiMock = window._aiMock ?? false;
+const maxDuration = window._maxDuration ?? 60 * 1000;
+const canvas = document.createElement('canvas');
+const context = canvas.getContext('2d', { willReadFrequently: true });
+canvas.width = VIDEO_WIDTH;
+canvas.height = VIDEO_HEIGHT;
+const $t = (key: any) => states.config[`i18n_${key}`] || t(key);
+const ALL_ACTIONS = [
+  {
+    id: E_ACTION.TURN_LEFT,
+    label: $t('turn_left'),
+  },
+  {
+    id: E_ACTION.TURN_RIGHT,
+    label: $t('turn_right'),
+  },
+  {
+    id: E_ACTION.NOD,
+    label: $t('nod_head'),
+  },
+  {
+    id: E_ACTION.OPEN_MOUTH,
+    label: $t('open_mouth'),
+  },
+  {
+    id: E_ACTION.BLINK_EYE,
+    label: $t('blink'),
+  },
+];
+
+function getActionGif(index: number) {
+  return `${window.CDNAddress}images/action-${index}.gif`;
+}
+
+function clearWarn() {
+  hint.value = '';
+  isWarn.value = false;
+}
+
+function showWarn(code: number) {
+  hint.value = $t(M_ACTION_DETECT_ERROR[code]) || '';
+  isWarn.value = true;
+}
+
+function showResultError(code: string) {
+  failedTitle.value = $t(M_ERROR_CODE[code] || 'occurred_err');
+}
+
+function showVerfyError(code: number) {
+  failedTitle.value = $t(M_VERIFY_STATUS_ERROR[code]) || '';
+}
+
+function completeCertification() {
+  redirectWithOrderId(states.config.success_url, states.config.order_id);
+}
+
+function getActionName(action: E_ACTION) {
+  return ALL_ACTIONS.find((item) => item.id === action)?.label || '';
+}
+
+function logOut() {
+  redirectWithOrderId(states.config.failure_url, states.config.order_id);
+  stop();
+}
+
+function retry() {
+  state.value = 'verify';
+  showRetry.value = false;
+  isShowVideo.value = true;
+  showBackIcon.value = true;
+  hint.value = '';
+  isRunning.value = false;
+  failedTitle.value = '';
+  tip.value = '';
+  setLocalLoading(false);
+  clearWarn();
+  verify();
+}
+
+function verify() {
+  const isBrowserSimulate = isBrowserSimulation();
+  actions.value = states.config.actions
+    .split(',')
+    .map((item: string) => Number(item));
+  navigator.mediaDevices
+    .getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: isBrowserSimulate ? VIDEO_WIDTH : VIDEO_HEIGHT,
+        height: isBrowserSimulate ? VIDEO_HEIGHT : VIDEO_WIDTH,
+        frameRate: {
+          min: 10,
+          ideal: 30,
+          max: 30,
+        },
+      },
+      audio: false,
+    })
+    .then(
+      (_stream) => {
+        stream.value = _stream;
+        isShowVideo.value = true;
+        videoRef.value!.srcObject = _stream;
+        videoRef.value!.play();
+      },
+      (err) => {
+        setLocalLoading(false);
+        hint.value = err.name;
+        tip.value = $t('get_mediaDevice_failed');
+      },
+    );
+}
+
+function getFrameData(draw = true) {
+  if (draw) {
+    context!.drawImage(
+      videoRef.value as HTMLVideoElement,
+      0,
+      0,
+      VIDEO_WIDTH,
+      VIDEO_HEIGHT,
+    );
+  }
+  return context!.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT).data;
+}
+
+function actionDetect() {
+  const imageData = getFrameData();
+  const verificationCodeArray = base64ToUint8Array(
+    states.config.verification_code ?? '',
+  );
+  window.Module.HEAPU8.set(imageData, dst.value);
+  const currentAction = actions.value[currentStep.value];
+  const currentActionIndex = ALL_ACTIONS.findIndex(
+    (item) => item.id === currentAction,
+  );
+  const imageDataLength = window.Module._malloc(4);
+  const imagePtr = window.Module._malloc(1024 * 1024);
+  let errorCode = window.Module.ccall(
+    'action_detect',
+    'number',
+    [
+      'pointer',
+      'number',
+      'number',
+      'number',
+      'array',
+      'number',
+      'pointer',
+      'pointer',
+    ],
+    [
+      dst.value,
+      VIDEO_WIDTH,
+      VIDEO_HEIGHT,
+      currentActionIndex + 1,
+      verificationCodeArray,
+      verificationCodeArray.byteLength,
+      imagePtr,
+      imageDataLength,
+    ],
+  );
+
+  if (aiMock) {
+    errorCode = [
+      ...new Array(20).fill(0).map((_, index) => 1001 + index),
+      0,
+      1,
+    ][Math.round(Math.random() * 22)];
+  }
+
+  const log = `===> 要校验的动作组合：${actions.value}, 当前校验动作：${currentAction}, 返回码：${errorCode}, 是否MOCK AI：${aiMock}`;
+  if (log !== lastActionLog.value) {
+    lastActionLog.value = log;
+    logger.log(log);
+  }
+
+  let perfectImg = '';
+  if (errorCode === 1) {
+    perfectImg = window.Module.UTF8ToString(
+      imagePtr,
+      window.Module.HEAP32[imageDataLength >> 2],
+    );
+    if (aiMock) {
+      perfectImg = Array(20480).fill(0).join('');
+    }
+  }
+  window.Module.ccall('free_image_data', 'number', ['pointer'], [imagePtr]);
+  window.Module._free(imagePtr);
+
+  return {
+    code: errorCode > 1000 ? errorCode : 0,
+    result: errorCode === 1,
+    perfectImg,
+  };
+}
+
+function onPlay() {
+  isRunning.value = true;
+  currentStep.value = 0;
+  const startTime = new Date().getTime();
+  let lastTime = startTime;
+  let lastResult = false;
+  let frameNum = 0;
+  let lastCode = -1;
+  let lastCodeCount = 0;
+  const run = () => {
+    frameNum++;
+    if (!isRunning.value) {
+      return;
+    }
+    if (frameNum % frameRate !== 0) {
+      window.requestAnimationFrame(run);
+      return;
+    }
+    const currentAction = actions.value[currentStep.value];
+
+    if (new Date().getTime() - startTime > maxDuration) {
+      state.value = 'failed';
+      failedTitle.value = $t('timeout');
+      checkRetry();
+      return;
+    }
+    const elaspedTime = new Date().getTime() - lastTime;
+    // 成功一个动作后待1s再验下一个动作
+    if (lastResult && elaspedTime < 1000) {
+      window.requestAnimationFrame(run);
+      return;
+    }
+
+    const { code, result, perfectImg } = actionDetect();
+    if (code > 1000 && (code === lastCode || lastCode === -1)) {
+      lastCodeCount++;
+    } else {
+      lastCodeCount = 0;
+    }
+    lastCode = code;
+
+    // 告警动作节流，同一个errorCode只有出现超过15才算
+    // 无效动作节流，0.5s
+    if ((code > 1000 && lastCodeCount < 15) || (!result && elaspedTime < 500)) {
+      window.requestAnimationFrame(run);
+      return;
+    }
+    lastResult = result;
+    lastTime = new Date().getTime();
+    percent.value =
+      ((currentStep.value + 1) / (actions.value.length + 1)) * 100;
+
+    if (result) {
+      if (perfectImg.length > 100) {
+        base64Image.value = perfectImg;
+      }
+      clearWarn();
+      // 到本地验证最后一步完成
+      if (currentStep.value >= actions.value.length - 1) {
+        videoRef.value!.pause();
+        hint.value = $t('authenticationing');
+        setLocalLoading(true);
+        const params: any = {
+          sdk_token: states.token,
+          face_image1: base64Image.value,
+        };
+        if (
+          states.config.process_type === 'AuthoritySourceWithInputIDCardText'
+        ) {
+          params.verification_name = states.name;
+          params.verification_id = states.idNumber;
+        }
+        if (TWO_STAGE_TYPES.includes(states.config.process_type)) {
+          params.process = 'liveness';
+        }
+        if (!base64Image.value) {
+          state.value = 'failed';
+          showVerfyError(1);
+          checkRetry();
+        } else {
+          faceVerify(params).then(
+            (res: any) => {
+              showBackIcon.value = false;
+              if (res.verify_status === 100) {
+                percent.value = 100;
+                setTimeout(() => {
+                  state.value = 'success';
+                  stop();
+                  clearWarn();
+                }, 1000);
+              } else {
+                state.value = 'failed';
+                showVerfyError(res.verify_status);
+                checkRetry();
+                stop();
+                clearWarn();
+              }
+            },
+            (err) => {
+              showResultError(err?.data?.error_code);
+              checkRetry();
+              hint.value = '';
+              isWarn.value = true;
+              state.value = 'failed';
+              stop();
+            },
+          );
+        }
+      } else {
+        hint.value = getActionName(currentAction);
+        currentStep.value++;
+        window.requestAnimationFrame(run);
+      }
+    } else if (code) {
+      showWarn(code);
+      window.requestAnimationFrame(run);
+    } else {
+      clearWarn();
+      hint.value = getActionName(currentAction);
+      window.requestAnimationFrame(run);
+    }
+  };
+
+  if (window.wasmModuleLoaded) {
+    mallocAndCallSFilter();
+  } else {
+    window.wasmModuleLoadedCallbacks.push(mallocAndCallSFilter);
+  }
+
+  function mallocAndCallSFilter() {
+    if (dst.value != null) {
+      window.Module._free(dst.value);
+      dst.value = null;
+    }
+
+    dst.value = window.Module._malloc(VIDEO_HEIGHT * VIDEO_WIDTH * 4);
+    hint.value = $t('face_camera');
+    setLocalLoading(false);
+    run();
+  }
+}
+
+function setLocalLoading(val: boolean) {
+  isLoading.value = val;
+  opacity.value = val;
+}
+
+function checkRetry() {
+  setLoading(true);
+  showRetry.value = false;
+  checkToken({
+    sdk_token: states.token,
+    process: 'validate',
+  })
+    .then(
+      () => {
+        showRetry.value = true;
+      },
+      () => {},
+    )
+    .finally(() => {
+      setLoading(false);
+    });
+}
+
+function redirectWithOrderId(url: string, orderId: string) {
+  const currentURL = new URL(url);
+  const searchParams = new URLSearchParams(currentURL.search);
+  if (!searchParams.has('order_id') && !url.includes(orderId)) {
+    searchParams.set('order_id', orderId);
+    currentURL.search = searchParams.toString();
+  }
+  window.location.href = currentURL.href;
+}
+
+function stop() {
+  setLocalLoading(false);
+  isRunning.value = false;
+  tip.value = '';
+  if (!stream.value) {
+    return;
+  } else if (typeof stream.value!.stop === 'function') {
+    stream.value.stop();
+  } else {
+    let trackList = [
+      stream.value.getAudioTracks(),
+      stream.value.getVideoTracks(),
+    ];
+    for (let i = 0; i < trackList.length; i++) {
+      let tracks = trackList[i];
+      if (tracks && tracks.length > 0) {
+        for (let j = 0; j < tracks.length; j++) {
+          let track = tracks[j];
+          if (typeof track.stop === 'function') {
+            track.stop();
+          }
+        }
+      }
+    }
+  }
+}
+
+async function initWasm() {
+  hint.value = $t('initializing');
+
+  if (window.wasmModuleLoaded || wasm.loaded) {
+    hint.value = $t('face_camera');
+    return Promise.resolve();
+  }
+
+  return wasm.promise.then(
+    () => {
+      hint.value = $t('face_camera');
+    },
+    (err: any) => {
+      setLocalLoading(false);
+      hint.value = err.name || $t('load_failed');
+      tip.value = $t('init_failed');
+    },
+  );
+}
+
+function base64ToUint8Array(base64String: string) {
+  const binaryString = atob(base64String);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+onMounted(() => {
+  setLocalLoading(true);
+  initWasm().then(() => {
+    verify();
+  });
+});
+
+onUnmounted(() => {
+  stop();
+});
+</script>
+
+<template>
+  <div class="container" :style="getStyle(['background-image:other_bg'])">
+    <Header
+      :title="getConfig('title_name', $t('face_authentication'))"
+      :showBack="showBackIcon"
+    ></Header>
+    <div class="faceing" v-show="state === 'verify'">
+      <p class="get-title">{{ hint }}</p>
+      <div class="face-circle">
+        <Progress class="progress" :isWarn="isWarn" :percent="percent" />
+        <div class="circle">
+          <video
+            ref="videoRef"
+            :width="VIDEO_WIDTH"
+            :height="VIDEO_HEIGHT"
+            :class="{ mask: opacity }"
+            @play="onPlay"
+            class="video-main"
+            muted
+            playsinline
+            v-show="isShowVideo"
+          ></video>
+        </div>
+        <label class="tip">{{ tip }}</label>
+        <img
+          class="loading"
+          :src="getConfig('loading_icon', '/images/loading.png')"
+          v-show="isLoading"
+        />
+        <svg
+          class="outline-circle"
+          width="283"
+          height="283"
+          viewBox="0 0 283 283"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          xmlns:xlink="http://www.w3.org/1999/xlink"
+        >
+          <circle
+            cx="141.5"
+            cy="141.5"
+            r="134.5"
+            :stroke="isWarn ? failOutCircle : successOutCircle"
+            stroke-opacity="0.15"
+            stroke-width="14"
+            transition="stroke 0.6s ease;"
+          />
+        </svg>
+      </div>
+      <div class="action-guide" v-show="!isLoading">
+        <img
+          v-for="i in 5"
+          v-show="actions[currentStep] === i"
+          :src="getActionGif(i)"
+        />
+      </div>
+    </div>
+    <div class="face-pass" v-show="state === 'success'">
+      <img
+        :src="getConfig('result_success_icon', '/images/pass.svg')"
+        class="image-success"
+      />
+      <div class="info">
+        <img
+          :src="getConfig('result_success_pre_icon', '/images/icon-pass.png')"
+          alt=""
+        />
+        <p>{{ $t('face_pass') }}</p>
+      </div>
+      <div class="bottom-btn">
+        <button
+          type="button"
+          :style="
+            getStyle([
+              'background:primary_button_bg_color',
+              'color:primary_button_txt_color',
+              'border:primary_button_border_color',
+            ])
+          "
+          @click="completeCertification()"
+          class="my-btn full-width"
+        >
+          {{ $t('finished') }}
+        </button>
+      </div>
+    </div>
+    <div class="face-failed" v-show="state === 'failed'">
+      <img
+        :src="getConfig('result_fail_icon', '/images/failed.svg')"
+        class="image-failed"
+      />
+      <div class="info">
+        <img :src="getConfig('result_fail_pre_icon', '/images/wrong.png')" />
+        <p class="failed-title">{{ failedTitle }}</p>
+      </div>
+      <div
+        class="bottom-btn-failed"
+        :style="{ paddingTop: showRetry ? '' : '0.4rem' }"
+      >
+        <button
+          type="button"
+          v-if="showRetry"
+          class="my-btn"
+          :style="
+            getStyle([
+              'background:primary_button_bg_color',
+              'color:primary_button_txt_color',
+              'border:primary_button_border_color',
+            ])
+          "
+          @click="retry()"
+        >
+          {{ $t('recertification') }}
+        </button>
+
+        <button
+          type="button"
+          :style="
+            getStyle([
+              'background:default_button_bg_color',
+              'color:default_button_txt_color',
+              'border:default_button_border_color',
+            ])
+          "
+          class="my-btn plain mt"
+          @click="logOut()"
+        >
+          {{ $t('exit') }}
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style lang="less" scoped>
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  background: url('/images/other-bg.svg');
+  background-size: cover;
+  overflow: auto;
+
+  .faceing {
+    flex: 1;
+    width: 100%;
+    padding-top: 0.72rem;
+    overflow-y: auto;
+
+    .get-title {
+      margin-bottom: 0.32rem;
+      font-size: 0.18rem;
+      color: black;
+      font-weight: 600;
+      text-align: center;
+      height: 0.5rem;
+      padding: 0 5vw;
+    }
+
+    .action-guide {
+      margin: 0.8rem auto 0;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      padding: 0.01rem;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.2);
+
+      img {
+        width: 100%;
+        height: 100%;
+      }
+    }
+
+    .face-circle {
+      width: 2.83rem;
+      height: 2.83rem;
+      display: flex;
+      justify-content: center;
+      position: relative;
+      align-items: center;
+      margin: auto;
+
+      .progress {
+        width: calc(100% - 0.15rem);
+        height: calc(100% - 0.15rem);
+        position: absolute;
+        z-index: 9999;
+      }
+
+      .circle {
+        width: 2.53rem;
+        height: 2.53rem;
+        border-radius: 50%;
+        overflow: hidden;
+        position: absolute;
+
+        .video-main {
+          position: absolute;
+          width: 2.6rem;
+          height: 3.46rem;
+          transform: translate(-50%, -50%) rotateY(180deg);
+          top: 50%;
+          left: 50%;
+          z-index: 10;
+        }
+      }
+
+      .mask {
+        opacity: 0.3;
+      }
+
+      .loading {
+        width: 0.44rem;
+        height: 0.44rem;
+        animation: anmRotate 3s linear infinite;
+        position: absolute;
+        z-index: 55;
+      }
+
+      .tip {
+        margin-top: 3.2rem;
+        display: flex;
+        height: 0.4rem;
+        justify-content: center;
+        align-items: center;
+        font-size: 0.2rem;
+        color: #4f62c0;
+      }
+
+      p,
+      img {
+        position: absolute;
+      }
+
+      .outline-circle {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+      }
+    }
+  }
+
+  .face-pass,
+  .face-failed {
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    overflow-y: auto;
+
+    .image-success {
+      margin-top: 1rem;
+      width: 0.7rem;
+      height: 0.7rem;
+    }
+
+    .image-failed {
+      margin-top: 1rem;
+      width: 0.7rem;
+      height: 0.7rem;
+    }
+
+    .info {
+      display: flex;
+      justify-content: center;
+      margin: 0.28rem 0.4rem 0 0.4rem;
+
+      p {
+        font-size: 0.18rem;
+        color: #000000;
+        font-weight: 400;
+        margin-left: 0.08rem;
+      }
+
+      img {
+        width: 0.24rem;
+        height: 0.24rem;
+      }
+
+      .failed-title {
+        font-size: 0.18rem;
+        color: #000;
+        font-weight: 400;
+        margin-left: 0.08rem;
+      }
+    }
+
+    .bottom-btn {
+      margin-top: 0.88rem;
+    }
+
+    .bottom-btn-failed {
+      width: 2.95rem;
+      margin-top: 0.88rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+
+      .my-btn {
+        width: 2.95rem;
+      }
+
+      .mt {
+        margin-top: 0.2rem;
+      }
+    }
+  }
+
+  @keyframes anmRotate {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+@media screen and (min-width: 500px) {
+  .container {
+    background: url('/images/home.svg');
+    background-size: cover;
+
+    .face-failed div.bottom-btn-failed {
+      width: 4rem;
+    }
+
+    .faceing .face-circle {
+      width: 3.26rem;
+      height: 3.26rem;
+
+      div.circle {
+        width: 2.95rem;
+        height: 2.95rem;
+
+        .video-main {
+          width: 4.15rem;
+          height: 3.12rem;
+        }
+      }
+    }
+
+    .face-pass,
+    .face-failed {
+      img.image-success {
+        width: 0.88rem;
+        height: 0.88rem;
+        margin-top: 1.8rem;
+      }
+
+      img.image-failed {
+        width: 0.88rem;
+        height: 0.88rem;
+        margin-top: 1.8rem;
+      }
+    }
+  }
+}
+</style>
