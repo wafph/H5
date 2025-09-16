@@ -1,0 +1,137 @@
+import { reactive } from 'vue';
+
+type T_CONFIG = {
+  [key: string]: any;
+};
+
+type T_STATE = {
+  [key: string]: any;
+  config: T_CONFIG;
+};
+
+const states = reactive<T_STATE>({
+  isSupport: false,
+  loading: false,
+  skeleton: false,
+  token: '',
+  projectId: '',
+  isAgree: false,
+  name: '',
+  idNumber: '',
+  isTypeExists: true,
+  config: {
+    title_name: '',
+    actions: '',
+    process_type: '',
+    enable_alternatives: false,
+    success_url: '',
+    failure_url: '',
+    verification_code: '',
+    order_id: '',
+  },
+});
+
+export function useState() {
+  const getStyle = (configs: Array<string>) => {
+    return configs.reduce((acc, curr) => {
+      const [styleKey, configKey] = curr.split(':');
+      const config = states.config?.[configKey];
+      const isURL = ['background-image'].includes(styleKey);
+      const isBorder = ['border'].includes(styleKey);
+      const noURLConfig = isBorder ? `1px solid ${config}` : config;
+      const configObj = config ? {
+        [styleKey]: isURL ? `url(${config})` : noURLConfig,
+      } : {};
+
+      return {
+        ...acc,
+        ...configObj,
+      };
+    }, {});
+  };
+
+  const getConfig = (configKey: string, defaultValue = '') => {
+    const isURL = defaultValue.startsWith('/images/');
+    const absValue = isURL ? `${window.CDNAddress}${defaultValue.slice(1)}` : defaultValue;
+    return states.config?.[configKey] || absValue;
+  };
+
+  return {
+    states,
+    setIsAgree: (val: boolean) => { states.isAgree = val },
+    setConfig: (val: T_CONFIG) => { states.config = val },
+    setToken: (val: string) => { states.token = val },
+    setProjectId: (val: string) => { states.projectId = val },
+    setName: (val: string) => { states.name = val },
+    setIdNumber: (val: string) => { states.idNumber = val },
+    setLoading: (val: boolean) => { states.loading = val },
+    setSkeleton: (val: boolean) => { states.skeleton = val },
+    setIsSupport: (val: boolean) => { states.isSupport = val },
+    setIsTypeExists: (val: boolean) => { states.isTypeExists = val },
+    getStyle,
+    getConfig,
+  };
+}
+
+---------------------------------------------------------------
+import { reactive } from 'vue';
+const wasm = reactive<{
+  loaded: boolean;
+  error: boolean;
+  promise: Promise<any>;
+}>({
+  loaded: false,
+  error: false,
+  promise: Promise.resolve(),
+});
+const moduleName = 'h5_action_detect';
+
+export function useWasmLoader() {
+  function loadWasm() {
+    window.Module = window.Module || {};
+    window.wasmModuleLoaded = false;
+    window.wasmModuleLoadedCallbacks = [];
+    window.Module.onRuntimeInitialized = function () {
+      window.wasmModuleLoaded = true;
+      for (let i = 0; i < window.wasmModuleLoadedCallbacks.length; i++) {
+        window.wasmModuleLoadedCallbacks[i]();
+      }
+    };
+
+    const yolov5wasm = `${window.CDNAddress}${moduleName}.wasm`;
+    const yolov5js = `${window.CDNAddress}${moduleName}.js`;
+
+    wasm.error = false;
+    wasm.promise = new Promise((resolve, reject) => {
+      fetch(yolov5wasm)
+        .then((response) => response.arrayBuffer())
+        .then(
+          (buffer) => {
+            window.Module.wasmBinary = buffer;
+            const script = document.createElement('script');
+            script.src = yolov5js;
+            script.onload = () => {
+              wasm.loaded = true;
+              resolve(null);
+            };
+            script.onerror = (err) => {
+              wasm.error = true;
+              reject(err);
+            };
+            document.body.appendChild(script);
+          },
+          (err) => {
+            wasm.error = true;
+            reject(err);
+          },
+        );
+    });
+
+    return wasm.promise;
+  }
+
+  return {
+    wasm,
+    loadWasm,
+  };
+}
